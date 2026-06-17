@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tokenai — Live Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', sans-serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+  @keyframes hitPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+    70%  { box-shadow: 0 0 0 12px rgba(16,185,129,0); }
+    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+  }
+  @keyframes countUp {
+    from { transform: scale(1.2); color: #34d399; }
+    to   { transform: scale(1);   color: inherit; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .slide-down  { animation: slideDown 0.25s ease-out; }
+  .fade-in     { animation: fadeIn 0.4s ease-out; }
+  .hit-glow    { animation: hitPulse 0.8s ease-out; }
+  .count-bump  { animation: countUp 0.4s ease-out; }
+  .spinner     { animation: spin 0.8s linear infinite; }
+
+  .bar-fill    { transition: width 0.6s cubic-bezier(.4,0,.2,1); }
+  .thresh-fill { transition: width 1s cubic-bezier(.4,0,.2,1); }
+  .tab-active  { border-bottom: 2px solid #6366f1; color: #a5b4fc; }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #1e293b; }
+  ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+</style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+<!-- ── HEADER ─────────────────────────────────────────────────── -->
+<header class="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-xl font-bold tracking-tight">token<span class="text-indigo-400">ai</span></span>
+      <span class="text-slate-500 text-sm">Semantic Cache + Compression</span>
+      <span class="bg-indigo-900/50 text-indigo-300 text-xs px-2 py-0.5 rounded-full mono">v0.2.0</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="api-status" class="flex items-center gap-2 text-sm">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+        <span id="status-text" class="text-slate-400">Connecting…</span>
+      </div>
+      <a href="/docs" target="_blank" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">API docs ↗</a>
+    </div>
+  </div>
+</header>
+
+<!-- ── MAIN ────────────────────────────────────────────────────── -->
+<main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+
+  <!-- ── STAT CARDS ──────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs uppercase tracking-wider mb-1">Total Queries</p>
+      <p id="stat-total" class="text-3xl font-bold text-white">0</p>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs uppercase tracking-wider mb-1">Cache Hits</p>
+      <div class="flex items-end gap-2">
+        <p id="stat-hits" class="text-3xl font-bold text-emerald-400">0</p>
+        <p id="stat-hit-pct" class="text-slate-400 text-sm mb-1">0%</p>
+      </div>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs uppercase tracking-wider mb-1">Tokens Saved</p>
+      <p id="stat-tokens" class="text-3xl font-bold text-violet-400">0</p>
+    </div>
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs uppercase tracking-wider mb-1">USD Saved</p>
+      <p id="stat-usd" class="text-3xl font-bold text-amber-400">$0.00</p>
+    </div>
+  </div>
+
+  <!-- ── TABS ────────────────────────────────────────────────── -->
+  <div class="border-b border-slate-800">
+    <nav class="flex gap-6">
+      <button onclick="showTab('cache')"    id="tab-btn-cache"    class="tab-btn py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors tab-active">Cache Playground</button>
+      <button onclick="showTab('compress')" id="tab-btn-compress" class="tab-btn py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors">Compress</button>
+      <button onclick="showTab('learn')"    id="tab-btn-learn"    class="tab-btn py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors">Adaptive Learning</button>
+    </nav>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TAB 1 — CACHE                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="tab-cache" class="tab-panel space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Left: query + results -->
+      <div class="lg:col-span-2 space-y-4">
+
+        <!-- Query bar -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <div class="flex gap-2">
+            <input id="query-input"
+              type="text"
+              placeholder="Ask anything… e.g. 'What is ML?' or 'How do neural nets work?'"
+              class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              onkeydown="if(event.key==='Enter') checkCache()"
+            >
+            <button onclick="checkCache()" id="check-btn"
+              class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+              <span>Check Cache</span>
+              <span id="check-spinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full spinner"></span>
+            </button>
+          </div>
+          <div class="flex items-center gap-3 text-xs text-slate-500">
+            <span>Customer ID:</span>
+            <input id="customer-id" value="demo-customer-01"
+              class="bg-slate-900 border border-slate-700 rounded px-2 py-1 mono text-slate-300 focus:outline-none focus:border-slate-500 w-44"
+            >
+            <span class="text-slate-600">|</span>
+            <span>API Key:</span>
+            <input id="api-key" value="dev-key-local"
+              class="bg-slate-900 border border-slate-700 rounded px-2 py-1 mono text-slate-300 focus:outline-none focus:border-slate-500 w-36"
+            >
+          </div>
+        </div>
+
+        <!-- Result card -->
+        <div id="result-card" class="hidden"></div>
+
+        <!-- Query history -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Query History</h3>
+            <button onclick="clearHistory()" class="text-xs text-slate-600 hover:text-slate-400 transition-colors">Clear</button>
+          </div>
+          <div id="history-feed" class="space-y-2">
+            <p class="text-slate-600 text-sm text-center py-6">No queries yet. Try asking something above.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: seed + store -->
+      <div class="space-y-4">
+
+        <!-- Seed panel -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-200">Knowledge Base</h3>
+            <button onclick="seedCache()" id="seed-btn"
+              class="bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5">
+              <span id="seed-icon">🌱</span> Seed Demo
+            </button>
+          </div>
+          <p class="text-slate-500 text-xs">Pre-load 5 AI/ML Q&A pairs so you can see cache hits immediately.</p>
+          <div id="seed-list" class="space-y-1.5">
+            <div class="flex items-center gap-2 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>What is machine learning?
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>How do transformers work?
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>What is tokenization in NLP?
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>Explain gradient descent.
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-500">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>What is context length?
+            </div>
+          </div>
+        </div>
+
+        <!-- Store panel -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <h3 class="text-sm font-semibold text-slate-200">Store Response</h3>
+          <p class="text-slate-500 text-xs">Manually add a Q&A pair to the cache.</p>
+          <textarea id="store-query" rows="2" placeholder="Question…"
+            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"></textarea>
+          <textarea id="store-response" rows="2" placeholder="Answer…"
+            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors resize-none"></textarea>
+          <button onclick="storeEntry()"
+            class="w-full bg-slate-700 hover:bg-slate-600 text-white text-sm py-2 rounded-lg font-medium transition-colors">
+            Store →
+          </button>
+        </div>
+
+        <!-- Try these queries -->
+        <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 space-y-2">
+          <h3 class="text-xs font-medium text-slate-500 uppercase tracking-wider">Try These After Seeding</h3>
+          <p class="text-slate-600 text-xs mb-2">These are semantically similar, not exact matches:</p>
+          <div class="space-y-1.5">
+            <button onclick="tryQuery('What is ML?')" class="w-full text-left text-xs text-indigo-300 hover:text-indigo-200 py-1 px-2 rounded hover:bg-indigo-900/30 transition-colors mono">"What is ML?"</button>
+            <button onclick="tryQuery('How does BERT work?')" class="w-full text-left text-xs text-indigo-300 hover:text-indigo-200 py-1 px-2 rounded hover:bg-indigo-900/30 transition-colors mono">"How does BERT work?"</button>
+            <button onclick="tryQuery('Explain tokens in language models')" class="w-full text-left text-xs text-indigo-300 hover:text-indigo-200 py-1 px-2 rounded hover:bg-indigo-900/30 transition-colors mono">"Explain tokens in LLMs"</button>
+            <button onclick="tryQuery('How does backpropagation work?')" class="w-full text-left text-xs text-indigo-300 hover:text-indigo-200 py-1 px-2 rounded hover:bg-indigo-900/30 transition-colors mono">"How does backprop work?"</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TAB 2 — COMPRESS                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="tab-compress" class="tab-panel hidden space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Left: builder -->
+      <div class="space-y-4">
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-200">Conversation</h3>
+            <div class="flex gap-2">
+              <button onclick="addMessage('user')" class="text-xs bg-indigo-900/50 hover:bg-indigo-900 text-indigo-300 px-2 py-1 rounded transition-colors">+ User</button>
+              <button onclick="addMessage('assistant')" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1 rounded transition-colors">+ Assistant</button>
+              <button onclick="loadSampleConversation()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1 rounded transition-colors">Load Sample</button>
+            </div>
+          </div>
+          <div id="message-list" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+          <div class="flex items-center gap-3 text-xs pt-2 border-t border-slate-700">
+            <span class="text-slate-500">Token count:</span>
+            <span id="token-count" class="mono text-violet-400 font-medium">0</span>
+            <span class="text-slate-600">|</span>
+            <span class="text-slate-500">Max tokens:</span>
+            <input id="max-tokens" type="number" value="4000"
+              class="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 mono text-slate-300 focus:outline-none focus:border-slate-500 text-xs">
+            <span class="text-slate-600">|</span>
+            <label class="flex items-center gap-1 text-slate-500 cursor-pointer">
+              <input id="use-cache-toggle" type="checkbox" class="accent-indigo-500"> Use Cache
+            </label>
+          </div>
+        </div>
+        <button onclick="runCompress()" id="compress-btn"
+          class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+          <span>Compress</span>
+          <span id="compress-spinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full spinner"></span>
+        </button>
+      </div>
+
+      <!-- Right: result -->
+      <div class="space-y-4">
+        <div id="compress-result" class="hidden bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-4 fade-in">
+          <h3 class="text-sm font-semibold text-slate-200">Compression Result</h3>
+
+          <!-- Savings row -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-slate-900 rounded-lg p-3 text-center">
+              <p class="text-xs text-slate-500 mb-1">Original</p>
+              <p id="cr-original" class="text-xl font-bold text-slate-200 mono">—</p>
+              <p class="text-xs text-slate-600">tokens</p>
+            </div>
+            <div class="bg-slate-900 rounded-lg p-3 text-center">
+              <p class="text-xs text-slate-500 mb-1">Compressed</p>
+              <p id="cr-compressed" class="text-xl font-bold text-emerald-400 mono">—</p>
+              <p class="text-xs text-slate-600">tokens</p>
+            </div>
+            <div class="bg-slate-900 rounded-lg p-3 text-center">
+              <p class="text-xs text-slate-500 mb-1">Saved</p>
+              <p id="cr-saved" class="text-xl font-bold text-violet-400 mono">—</p>
+              <p class="text-xs text-slate-600">tokens</p>
+            </div>
+          </div>
+
+          <!-- Reduction bar -->
+          <div>
+            <div class="flex justify-between text-xs text-slate-500 mb-1">
+              <span>Reduction</span>
+              <span id="cr-ratio">—</span>
+            </div>
+            <div class="bg-slate-700 rounded-full h-2 overflow-hidden">
+              <div id="cr-bar" class="h-full bg-gradient-to-r from-violet-500 to-emerald-500 bar-fill" style="width:0%"></div>
+            </div>
+          </div>
+
+          <!-- Meta row -->
+          <div class="flex items-center gap-4 text-xs">
+            <span id="cr-cache-badge" class="hidden bg-emerald-900/60 text-emerald-400 border border-emerald-700/50 px-2 py-0.5 rounded-full">⚡ Cache Hit</span>
+            <span id="cr-usd" class="text-amber-400 mono">—</span>
+            <span id="cr-latency" class="text-slate-500">—</span>
+          </div>
+
+          <!-- Compressed messages -->
+          <div>
+            <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Compressed Messages</p>
+            <div id="cr-messages" class="space-y-1.5 max-h-48 overflow-y-auto"></div>
+          </div>
+        </div>
+
+        <!-- Placeholder -->
+        <div id="compress-placeholder" class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-8 text-center space-y-2">
+          <div class="text-4xl">⚡</div>
+          <p class="text-slate-500 text-sm">Add messages and click Compress to see token savings</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TAB 3 — ADAPTIVE LEARNING                                 -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div id="tab-learn" class="tab-panel hidden space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Threshold gauge -->
+      <div class="lg:col-span-2 bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-slate-200">Adaptive Similarity Threshold</h3>
+          <span class="text-xs text-slate-500 mono">Customer: <span id="learn-cid" class="text-slate-300">—</span></span>
+        </div>
+
+        <!-- Big threshold number -->
+        <div class="text-center space-y-2">
+          <p id="thresh-value" class="text-6xl font-bold text-indigo-400 mono transition-all duration-500">0.850</p>
+          <p class="text-slate-500 text-sm">A query needs this score to get a cache hit</p>
+        </div>
+
+        <!-- Visual bar -->
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs text-slate-500">
+            <span>0.70 (permissive)</span>
+            <span>0.98 (strict)</span>
+          </div>
+          <div class="relative bg-slate-700 rounded-full h-4 overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/30 via-indigo-500/30 to-red-500/30"></div>
+            <div id="thresh-bar" class="absolute left-0 top-0 h-full bg-indigo-500 thresh-fill" style="width:53.6%">
+              <div class="absolute right-0 top-0 h-full w-1 bg-white/80"></div>
+            </div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600">
+            <span>← more hits</span>
+            <span>fewer hits →</span>
+          </div>
+        </div>
+
+        <!-- Update rule explainer -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-emerald-900/20 border border-emerald-800/40 rounded-lg p-3 space-y-1">
+            <p class="text-xs font-medium text-emerald-400">Correct Hit</p>
+            <p class="text-xs text-slate-400">threshold <span class="mono">− 0.005</span></p>
+            <p class="text-xs text-slate-500">Loosens slightly — reward good matches</p>
+          </div>
+          <div class="bg-red-900/20 border border-red-800/40 rounded-lg p-3 space-y-1">
+            <p class="text-xs font-medium text-red-400">Wrong Hit</p>
+            <p class="text-xs text-slate-400">threshold <span class="mono">+ 0.020</span></p>
+            <p class="text-xs text-slate-500">Tightens 4× harder — punish bad matches</p>
+          </div>
+        </div>
+
+        <!-- Feedback history -->
+        <div>
+          <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">Feedback History</h4>
+          <div id="feedback-history" class="space-y-1.5 max-h-40 overflow-y-auto">
+            <p class="text-slate-600 text-xs text-center py-4">No feedback recorded yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: manual feedback + stats -->
+      <div class="space-y-4">
+
+        <!-- Feedback panel -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-4">
+          <h3 class="text-sm font-semibold text-slate-200">Give Feedback</h3>
+          <p class="text-slate-500 text-xs">Tell the cache whether a hit was helpful. This directly trains the threshold.</p>
+          <input id="fb-query" type="text" placeholder="Query text…"
+            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="giveFeedback(true)"
+              class="bg-emerald-700 hover:bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+              ✓ Correct
+            </button>
+            <button onclick="giveFeedback(false)"
+              class="bg-red-800 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors">
+              ✗ Wrong
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats panel -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-slate-200">Cache Stats</h3>
+            <button onclick="refreshStats()" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">↻ Refresh</button>
+          </div>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-slate-500">Threshold</span>
+              <span id="ls-threshold" class="mono text-sm text-indigo-300">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-slate-500">Total Hits</span>
+              <span id="ls-total" class="mono text-sm text-slate-200">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-slate-500">Correct Hits</span>
+              <span id="ls-correct" class="mono text-sm text-emerald-400">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-slate-500">Accuracy</span>
+              <span id="ls-accuracy" class="mono text-sm text-amber-400">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scenario buttons -->
+        <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 space-y-3">
+          <h3 class="text-xs font-medium text-slate-500 uppercase tracking-wider">Run Scenarios</h3>
+          <p class="text-xs text-slate-600">See the threshold adapt in real-time.</p>
+          <button onclick="runScenario('correct', 5)"
+            class="w-full text-left text-xs bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-300 px-3 py-2 rounded-lg transition-colors">
+            5× Correct Feedback → threshold −0.025
+          </button>
+          <button onclick="runScenario('wrong', 3)"
+            class="w-full text-left text-xs bg-red-900/30 hover:bg-red-900/50 text-red-300 px-3 py-2 rounded-lg transition-colors">
+            3× Wrong Feedback → threshold +0.060
+          </button>
+          <button onclick="runScenario('mixed', 10)"
+            class="w-full text-left text-xs bg-slate-700/50 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg transition-colors">
+            10× Mixed → convergence demo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── TOAST ───────────────────────────────────────────────────── -->
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+  <div id="toast-inner" class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm shadow-xl slide-down flex items-center gap-3">
+    <span id="toast-icon"></span>
+    <span id="toast-msg"></span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!--  JAVASCRIPT                                                   -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────────────
+const state = {
+  total: 0, hits: 0, tokensSaved: 0, usdSaved: 0,
+  history: [],
+  feedbackHistory: [],
+  messages: [],
+  lastResult: null,
+};
+
+// ── Helpers ────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const cid  = () => $('customer-id').value.trim() || 'demo-customer-01';
+const akey = () => $('api-key').value.trim() || 'dev-key-local';
+
+function headers() {
+  return { 'Content-Type': 'application/json', 'x-api-key': akey() };
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: headers() };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+function toast(msg, type = 'info') {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️', warn: '⚠️' };
+  $('toast-icon').textContent = icons[type] || 'ℹ️';
+  $('toast-msg').textContent = msg;
+  const el = $('toast');
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+function animateStat(id, value) {
+  const el = $(id);
+  el.textContent = value;
+  el.classList.remove('count-bump');
+  void el.offsetWidth; // reflow
+  el.classList.add('count-bump');
+}
+
+function updateTopStats() {
+  animateStat('stat-total', state.total);
+  animateStat('stat-hits', state.hits);
+  const pct = state.total ? Math.round(state.hits / state.total * 100) : 0;
+  $('stat-hit-pct').textContent = `${pct}%`;
+  animateStat('stat-tokens', state.tokensSaved.toLocaleString());
+  animateStat('stat-usd', `$${state.usdSaved.toFixed(4)}`);
+}
+
+// ── API health ─────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const data = await api('GET', '/health');
+    $('status-dot').className = 'w-2 h-2 rounded-full bg-emerald-400';
+    $('status-text').className = 'text-emerald-400 text-sm';
+    $('status-text').textContent = 'API Connected';
+    return true;
+  } catch {
+    $('status-dot').className = 'w-2 h-2 rounded-full bg-red-500';
+    $('status-text').className = 'text-red-400 text-sm';
+    $('status-text').textContent = 'API Offline';
+    return false;
+  }
+}
+
+// ── Tab switching ──────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+  $(`tab-${name}`).classList.remove('hidden');
+  $(`tab-btn-${name}`).classList.add('tab-active');
+  if (name === 'learn') refreshStats();
+}
+
+// ── CACHE TAB ──────────────────────────────────────────────────────
+async function checkCache() {
+  const query = $('query-input').value.trim();
+  if (!query) { toast('Enter a query first.', 'warn'); return; }
+
+  $('check-btn').disabled = true;
+  $('check-spinner').classList.remove('hidden');
+
+  try {
+    const t0 = performance.now();
+    const data = await api('POST', '/cache/get', { query, customer_id: cid() });
+    const clientMs = (performance.now() - t0).toFixed(1);
+
+    state.total++;
+    state.lastResult = { query, data, clientMs };
+
+    if (data.hit) {
+      state.hits++;
+      // Estimate tokens saved (rough: 1 token ≈ 4 chars of query+response)
+      const est = Math.round((query.length + (data.response || '').length) / 4);
+      state.tokensSaved += est;
+      state.usdSaved += est * 3e-6; // Sonnet pricing
+      renderResultCard(query, data, clientMs, true);
+    } else {
+      renderResultCard(query, data, clientMs, false);
+    }
+
+    updateTopStats();
+    addToHistory(query, data, clientMs);
+  } catch (e) {
+    toast('API error: ' + e.message, 'error');
+  } finally {
+    $('check-btn').disabled = false;
+    $('check-spinner').classList.add('hidden');
+  }
+}
+
+function renderResultCard(query, data, clientMs, hit) {
+  const card = $('result-card');
+  card.className = 'slide-down';
+  card.classList.remove('hidden');
+
+  if (hit) {
+    const score = (data.score * 100).toFixed(1);
+    card.innerHTML = `
+      <div class="bg-emerald-900/20 border border-emerald-700/50 rounded-xl p-5 space-y-4 hit-glow">
+        <div class="flex items-center gap-3">
+          <span class="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">⚡ Cache Hit</span>
+          <span class="text-slate-400 text-sm mono">${clientMs}ms</span>
+          <span class="text-slate-600 text-xs">vs ~2,000ms LLM</span>
+        </div>
+        <div>
+          <div class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>Similarity Score</span><span class="text-emerald-300 font-medium">${score}%</span>
+          </div>
+          <div class="bg-slate-700 rounded-full h-2 overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-emerald-500 to-emerald-300 bar-fill" style="width:${score}%"></div>
+          </div>
+        </div>
+        <div class="bg-slate-900/60 rounded-lg p-3">
+          <p class="text-xs text-slate-500 mb-1 uppercase tracking-wider">Cached Response</p>
+          <p class="text-sm text-slate-200">${escHtml(data.response || '')}</p>
+        </div>
+        <div class="flex gap-2 items-center">
+          <span class="text-xs text-slate-500">Was this answer correct?</span>
+          <button onclick="quickFeedback('${escHtml(query)}', true)" class="text-xs bg-emerald-800/60 hover:bg-emerald-700 text-emerald-300 px-3 py-1 rounded-lg transition-colors">✓ Yes</button>
+          <button onclick="quickFeedback('${escHtml(query)}', false)" class="text-xs bg-red-900/60 hover:bg-red-800 text-red-300 px-3 py-1 rounded-lg transition-colors">✗ No</button>
+        </div>
+      </div>`;
+  } else {
+    card.innerHTML = `
+      <div class="bg-amber-900/20 border border-amber-700/50 rounded-xl p-5 space-y-3">
+        <div class="flex items-center gap-3">
+          <span class="bg-amber-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Cache Miss</span>
+          <span class="text-slate-400 text-sm mono">${clientMs}ms</span>
+        </div>
+        <p class="text-slate-400 text-sm">No similar query found above the similarity threshold. Seed the knowledge base or store this Q&A pair.</p>
+        <div class="flex gap-2">
+          <button onclick="prefillStore('${escHtml(query)}')"
+            class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors">
+            + Store a response for this query
+          </button>
+        </div>
+      </div>`;
+  }
+}
+
+function addToHistory(query, data, clientMs) {
+  state.history.unshift({ query, hit: data.hit, score: data.score, clientMs, ts: new Date() });
+  if (state.history.length > 15) state.history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const feed = $('history-feed');
+  if (!state.history.length) {
+    feed.innerHTML = '<p class="text-slate-600 text-sm text-center py-6">No queries yet.</p>';
+    return;
+  }
+  feed.innerHTML = state.history.map(h => `
+    <div class="flex items-center gap-3 py-2 px-3 bg-slate-800/60 rounded-lg border border-slate-700/40 text-sm slide-down">
+      <span class="${h.hit ? 'text-emerald-400' : 'text-amber-400'} text-xs font-bold w-8 shrink-0">${h.hit ? 'HIT' : 'MISS'}</span>
+      <span class="text-slate-300 truncate flex-1">${escHtml(h.query)}</span>
+      ${h.hit ? `<span class="text-emerald-500/70 text-xs mono shrink-0">${(h.score*100).toFixed(0)}%</span>` : ''}
+      <span class="text-slate-600 text-xs mono shrink-0">${h.clientMs}ms</span>
+    </div>`).join('');
+}
+
+function clearHistory() {
+  state.history = [];
+  renderHistory();
+}
+
+function tryQuery(q) {
+  $('query-input').value = q;
+  showTab('cache');
+  checkCache();
+}
+
+function prefillStore(q) {
+  $('store-query').value = q;
+  $('store-response').focus();
+}
+
+async function storeEntry() {
+  const q = $('store-query').value.trim();
+  const r = $('store-response').value.trim();
+  if (!q || !r) { toast('Fill in both query and response.', 'warn'); return; }
+  try {
+    await api('POST', '/cache/store', { query: q, response: r, customer_id: cid() });
+    toast('Stored! Try querying it now.', 'success');
+    $('store-query').value = '';
+    $('store-response').value = '';
+  } catch(e) { toast('Store failed: ' + e.message, 'error'); }
+}
+
+// ── Seed ───────────────────────────────────────────────────────────
+const SEED_PAIRS = [
+  { q: "What is machine learning?",
+    r: "Machine learning is a branch of AI where systems learn from data to make predictions and decisions without being explicitly programmed for each task." },
+  { q: "How do transformers work?",
+    r: "Transformers use a self-attention mechanism that weighs the relevance of every token to every other token simultaneously, enabling parallel processing and capturing long-range dependencies." },
+  { q: "What is tokenization in NLP?",
+    r: "Tokenization splits raw text into smaller units called tokens — which can be words, subwords, or characters — that language models can process as numerical inputs." },
+  { q: "Explain gradient descent.",
+    r: "Gradient descent is an optimization algorithm that minimizes a loss function by iteratively adjusting model parameters in the direction opposite to the gradient, using a step size called the learning rate." },
+  { q: "What is context length?",
+    r: "Context length is the maximum number of tokens a language model can process in a single forward pass. Longer context windows allow models to consider more history but increase memory and compute costs quadratically." },
+];
+
+async function seedCache() {
+  const btn = $('seed-btn');
+  btn.disabled = true;
+  $('seed-icon').textContent = '⏳';
+  const dots = $('seed-list').querySelectorAll('span.rounded-full');
+
+  try {
+    for (let i = 0; i < SEED_PAIRS.length; i++) {
+      await api('POST', '/cache/store', { query: SEED_PAIRS[i].q, response: SEED_PAIRS[i].r, customer_id: cid() });
+      if (dots[i]) dots[i].className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+      await new Promise(r => setTimeout(r, 100)); // small delay for visual effect
+    }
+    $('seed-icon').textContent = '✅';
+    toast('Knowledge base seeded! Try the example queries →', 'success');
+  } catch(e) {
+    toast('Seed failed: ' + e.message, 'error');
+    $('seed-icon').textContent = '🌱';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── COMPRESS TAB ───────────────────────────────────────────────────
+function addMessage(role) {
+  state.messages.push({ role, content: '' });
+  renderMessages();
+}
+
+function removeMessage(idx) {
+  state.messages.splice(idx, 1);
+  renderMessages();
+}
+
+function updateMessage(idx, val) {
+  state.messages[idx].content = val;
+  updateTokenCount();
+}
+
+function updateTokenCount() {
+  // Rough estimate: 1 token ≈ 4 chars
+  const total = state.messages.reduce((s, m) => s + Math.ceil(m.content.length / 4) + 4, 0) + 2;
+  $('token-count').textContent = total;
+}
+
+function renderMessages() {
+  const list = $('message-list');
+  if (!state.messages.length) {
+    list.innerHTML = '<p class="text-slate-600 text-sm text-center py-4">No messages yet. Add user/assistant turns above.</p>';
+    updateTokenCount();
+    return;
+  }
+  list.innerHTML = state.messages.map((m, i) => `
+    <div class="flex gap-2 items-start">
+      <span class="text-xs mono mt-2.5 w-16 shrink-0 ${m.role === 'user' ? 'text-indigo-400' : 'text-slate-400'}">${m.role}</span>
+      <textarea onchange="updateMessage(${i}, this.value)" oninput="updateMessage(${i}, this.value)" rows="2"
+        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-slate-500 resize-none"
+        placeholder="${m.role === 'user' ? 'User message…' : 'Assistant response…'}">${escHtml(m.content)}</textarea>
+      <button onclick="removeMessage(${i})" class="text-slate-600 hover:text-red-400 transition-colors mt-2">✕</button>
+    </div>`).join('');
+  updateTokenCount();
+}
+
+function loadSampleConversation() {
+  state.messages = [
+    { role: 'system',    content: 'You are a helpful assistant specializing in machine learning.' },
+    { role: 'user',      content: 'What is overfitting in machine learning?' },
+    { role: 'assistant', content: 'Overfitting occurs when a model learns the training data too well, capturing noise and details that don\'t generalize to new data. The model performs well on training data but poorly on unseen examples.' },
+    { role: 'user',      content: 'How do I prevent it?' },
+    { role: 'assistant', content: 'Common techniques include: dropout regularization, early stopping, cross-validation, reducing model complexity, and increasing training data through augmentation.' },
+    { role: 'user',      content: 'What is dropout specifically?' },
+    { role: 'assistant', content: 'Dropout randomly deactivates a fraction of neurons during each training step, forcing the network to learn redundant representations and reducing co-adaptation between neurons.' },
+    { role: 'user',      content: 'What dropout rate is typically recommended?' },
+    { role: 'assistant', content: 'Typical dropout rates are 0.2–0.5 for dense layers and 0.1–0.3 for convolutional layers. The exact value is a hyperparameter tuned on a validation set.' },
+    { role: 'user',      content: 'Can you summarize the key points for preventing overfitting?' },
+  ];
+  renderMessages();
+}
+
+async function runCompress() {
+  if (!state.messages.length) { toast('Add some messages first.', 'warn'); return; }
+
+  $('compress-btn').disabled = true;
+  $('compress-spinner').classList.remove('hidden');
+
+  const useCache = $('use-cache-toggle').checked;
+  const payload = {
+    messages: state.messages,
+    max_tokens: parseInt($('max-tokens').value) || 4000,
+    model: 'claude-sonnet-4-6',
+    use_cache: useCache,
+    customer_id: useCache ? cid() : undefined,
+  };
+
+  try {
+    const t0 = performance.now();
+    const data = await api('POST', '/compress', payload);
+    const clientMs = (performance.now() - t0).toFixed(1);
+
+    $('compress-placeholder').classList.add('hidden');
+    const res = $('compress-result');
+    res.classList.remove('hidden');
+
+    // Token numbers (API returns field names from CompressResponse)
+    const original = data.saved_tokens + (data.messages ? estimateTokens(data.messages) : 0);
+    const compressed = estimateTokens(data.messages || []);
+
+    $('cr-original').textContent = state.messages.reduce((s, m) => s + Math.ceil(m.content.length/4)+4, 0) + 2;
+    $('cr-compressed').textContent = compressed;
+    $('cr-saved').textContent = data.saved_tokens;
+
+    const reductionPct = data.saved_tokens > 0
+      ? Math.round(data.saved_tokens / (data.saved_tokens + compressed) * 100)
+      : 0;
+    $('cr-ratio').textContent = `${reductionPct}% reduction`;
+    $('cr-bar').style.width = `${reductionPct}%`;
+    $('cr-usd').textContent = data.saved_usd > 0 ? `$${data.saved_usd.toFixed(6)} saved` : '$0.00 saved';
+    $('cr-latency').textContent = `${clientMs}ms`;
+
+    const cacheBadge = $('cr-cache-badge');
+    if (data.cache_hit) cacheBadge.classList.remove('hidden');
+    else cacheBadge.classList.add('hidden');
+
+    // Compressed messages
+    $('cr-messages').innerHTML = (data.messages || []).map(m => `
+      <div class="flex gap-2 text-xs">
+        <span class="mono ${m.role==='user' ? 'text-indigo-400' : m.role==='system' ? 'text-amber-400' : 'text-slate-400'} shrink-0 w-16">${m.role}</span>
+        <span class="text-slate-300 truncate">${escHtml(String(m.content || '').slice(0, 120))}${String(m.content||'').length>120?'…':''}</span>
+      </div>`).join('');
+
+    // Update global stats
+    state.tokensSaved += data.saved_tokens;
+    state.usdSaved += data.saved_usd || 0;
+    updateTopStats();
+
+    toast(data.cache_hit ? '⚡ Cache hit — no LLM needed!' : `Compressed. ${data.saved_tokens} tokens saved.`, data.cache_hit ? 'success' : 'info');
+
+  } catch(e) {
+    toast('Compress failed: ' + e.message, 'error');
+  } finally {
+    $('compress-btn').disabled = false;
+    $('compress-spinner').classList.add('hidden');
+  }
+}
+
+function estimateTokens(messages) {
+  return messages.reduce((s, m) => s + Math.ceil(String(m.content||'').length/4)+4, 0) + 2;
+}
+
+// ── LEARN TAB ──────────────────────────────────────────────────────
+async function refreshStats() {
+  $('learn-cid').textContent = cid();
+  try {
+    const data = await api('GET', `/cache/stats?customer_id=${encodeURIComponent(cid())}`);
+    const t = data.threshold;
+    $('thresh-value').textContent = t.toFixed(3);
+    // Bar: range 0.70–0.98 → 0–100%
+    const pct = ((t - 0.70) / (0.98 - 0.70) * 100).toFixed(1);
+    $('thresh-bar').style.width = `${pct}%`;
+
+    $('ls-threshold').textContent = t.toFixed(3);
+    $('ls-total').textContent = data.total_hits;
+    $('ls-correct').textContent = data.correct_hits;
+    $('ls-accuracy').textContent = `${(data.accuracy * 100).toFixed(1)}%`;
+  } catch(e) { /* API not ready yet */ }
+}
+
+async function giveFeedback(correct) {
+  const q = $('fb-query').value.trim();
+  if (!q) { toast('Enter the query text first.', 'warn'); return; }
+  await sendFeedback(q, correct);
+}
+
+async function quickFeedback(query, correct) {
+  $('fb-query').value = query;
+  await sendFeedback(query, correct);
+  showTab('learn');
+}
+
+async function sendFeedback(query, correct) {
+  try {
+    const data = await api('POST', '/cache/feedback', {
+      query, was_correct: correct, customer_id: cid()
+    });
+    const emoji = correct ? '✅' : '❌';
+    state.feedbackHistory.unshift({
+      query: query.slice(0, 50),
+      correct,
+      new_threshold: data.new_threshold,
+      ts: new Date()
+    });
+    renderFeedbackHistory();
+    refreshStats();
+    toast(`Threshold updated → ${data.new_threshold.toFixed(3)}`, correct ? 'success' : 'warn');
+  } catch(e) { toast('Feedback failed: ' + e.message, 'error'); }
+}
+
+function renderFeedbackHistory() {
+  const el = $('feedback-history');
+  if (!state.feedbackHistory.length) {
+    el.innerHTML = '<p class="text-slate-600 text-xs text-center py-4">No feedback recorded yet.</p>';
+    return;
+  }
+  el.innerHTML = state.feedbackHistory.slice(0, 10).map(f => `
+    <div class="flex items-center gap-2 text-xs py-1 slide-down">
+      <span class="${f.correct ? 'text-emerald-400' : 'text-red-400'}">${f.correct ? '✓' : '✗'}</span>
+      <span class="text-slate-400 truncate flex-1">${escHtml(f.query)}</span>
+      <span class="mono text-indigo-300 shrink-0">${f.new_threshold.toFixed(3)}</span>
+    </div>`).join('');
+}
+
+async function runScenario(type, n) {
+  const demoQuery = `scenario-query-${Date.now()}`;
+  // Store something first so feedback has a reference
+  await api('POST', '/cache/store', { query: demoQuery, response: 'demo response', customer_id: cid() });
+
+  let delay = 100;
+  for (let i = 0; i < n; i++) {
+    const correct = type === 'mixed' ? (i % 3 !== 0) : (type === 'correct');
+    await new Promise(r => setTimeout(r, delay));
+    await sendFeedback(demoQuery, correct);
+  }
+  toast(`${n} feedback events applied. Threshold converged.`, 'info');
+}
+
+// ── Utility ────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+(async () => {
+  await checkHealth();
+  setInterval(checkHealth, 8000);
+  renderMessages();
+  renderHistory();
+})();
+</script>
+</body>
+</html>

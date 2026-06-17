@@ -7,3 +7,5 @@ build/
 .env
 .pytest_cache/
 .claude/
+.tokenai_cache/
+.env
