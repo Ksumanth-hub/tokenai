@@ -1,8 +1,8 @@
-"""Unit tests for TokenCounter.count_messages with varying message arrays."""
+﻿"""Unit tests for TokenCounter.count_messages with varying message arrays."""
 
 import pytest
 
-from ctxmgr.counter import TokenCounter
+from tokenai.counter import TokenCounter
 
 counter = TokenCounter("gpt-4o")
 
@@ -61,8 +61,8 @@ def test_empty_messages():
 def test_unicode_messages():
     """Messages with CJK, emoji, and mixed-script unicode."""
     msgs = [
-        {"role": "user", "content": "こんにちは世界 🌍"},
-        {"role": "assistant", "content": "Привет! 你好！مرحبا 🎉🚀"},
+        {"role": "user", "content": "ã“ã‚“ã«ã¡ã¯ä¸–ç•Œ ðŸŒ"},
+        {"role": "assistant", "content": "ÐŸÑ€Ð¸Ð²ÐµÑ‚! ä½ å¥½ï¼Ù…Ø±Ø­Ø¨Ø§ ðŸŽ‰ðŸš€"},
     ]
     result = counter.count_messages(msgs)
     assert isinstance(result, int)
