@@ -1,6 +1,9 @@
 """Token counter supporting OpenAI and Claude models via tiktoken."""
+from __future__ import annotations
 
 import tiktoken
+
+from ctxmgr._utils import extract_text
 
 # Map model families to tiktoken encodings.
 # OpenAI models use their native encodings.
@@ -78,11 +81,12 @@ class TokenCounter:
         """Return the number of tokens in *text*."""
         return len(self._enc.encode(text))
 
-    def count_messages(self, messages: list[dict[str, str]]) -> int:
+    def count_messages(self, messages: list[dict]) -> int:
         """Estimate token count for a chat-style message list.
 
-        Each message is expected to have 'role' and 'content' keys.
-        Adds per-message overhead tokens matching the OpenAI chat format.
+        Accepts both plain-string content and list-of-blocks format (OpenAI
+        tool calls, Anthropic multi-modal). Images and tool-use blocks are
+        counted as short placeholder strings.
         """
         # https://platform.openai.com/docs/guides/chat/managing-tokens
         tokens_per_message = 4  # <|im_start|> role \n content <|im_end|>
@@ -90,7 +94,7 @@ class TokenCounter:
         for msg in messages:
             total += tokens_per_message
             total += self.count(msg.get("role", ""))
-            total += self.count(msg.get("content", ""))
+            total += self.count(extract_text(msg.get("content")))
         total += 2  # priming tokens
         return total
 
